@@ -11,7 +11,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <ClerkProvider>           {/* contexto de autenticación */}
       <html lang="en">
         <body>
-          <header className="p-4 border-b flex gap-4">
+          <header className=" p-4 border-b flex gap-4">
             <SignedOut>
               <SignInButton />
               <SignUpButton />
