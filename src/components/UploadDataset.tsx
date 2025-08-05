@@ -11,7 +11,7 @@ export default function UploadDataset() {
   const { getToken } = useAuth();
   const [file, setFile] = useState<File | null>(null);
   const [datasetId, setDatasetId] = useState<string>();
-  const [status, setStatus] = useState<"idle"|"pending"|"processing"|"ready"|"error">("idle");
+  const [status, setStatus] = useState<"idle"|"pending"|"processing"|"ready_for_embeddings"|"error">("idle");
   const [preview, setPreview] = useState<PreviewRow[]>([]);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -61,10 +61,10 @@ export default function UploadDataset() {
       const { status: dsStatus } = await res3.json();
       setStatus(dsStatus);
 
-      if (dsStatus === "ready" || dsStatus === "error") {
+      if (dsStatus === "ready_for_embeddings" || dsStatus === "error") {
         window.clearInterval(intervalId);
 
-        if (dsStatus === "ready") {
+        if (dsStatus === "ready_for_embeddings") {
           // 5) Cuando esté listo, pide el preview
           const res4 = await fetch(
             `${process.env.NEXT_PUBLIC_BACKEND_URL}/datasets/${dataset_id}/preview`,
@@ -104,7 +104,7 @@ export default function UploadDataset() {
         <strong>Status:</strong> {status}
       </div>
 
-      {status === "ready" && preview.length > 0 && (
+      {status === "ready_for_embeddings" && preview.length > 0 && (
         <div style={{ marginTop: 24 }}>
           <h3>Preview (primeras filas)</h3>
           <table border={1} cellPadding={4}>
