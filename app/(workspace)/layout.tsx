@@ -1,16 +1,23 @@
-// app/(workspace)/layout.tsx
-import { Sidebar } from "@/src/components/Sidebar";
+import NavAuth from "@/src/components/NavAuth";
+import { Sidebar } from "@/src/components/Sidebar"; // tu sidebar
+import { ClerkProvider } from "@clerk/nextjs";
+import "../globals.css";
 
-
-export default function WorkspaceLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function WorkspaceLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex h-screen overflow-hidden">
-      <Sidebar />                       {/* fijo a la izquierda */}
-      <main className="flex-1 overflow-y-auto p-4 bg-[#f1f1f1]">{children}</main>
-    </div>
+    <ClerkProvider>
+      <div className="min-h-screen flex">
+        <Sidebar />
+        {/* Columna derecha: topbar + contenido */}
+        <div className="flex-1 min-w-0 flex flex-col">
+          <header className="h-12 border-b px-4 flex items-center justify-end">
+            <NavAuth />
+          </header>
+          <main className="flex-1 overflow-auto p-4 bg-neutral-100">
+            {children}
+          </main>
+        </div>
+      </div>
+    </ClerkProvider>
   );
 }

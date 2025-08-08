@@ -7,11 +7,19 @@ interface PreviewRow {
   [key: string]: any;
 }
 
+type DatasetStatus =
+  | "idle"
+  | "pending"                // subiendo a Storage
+  | "processing"             // leyendo & convirtiendo
+  | "ready_for_embeddings"   // Parquet listo
+  | "ready_for_chat"         // embeddings OK  // NEW
+  | "error";
+
 export default function UploadDataset() {
   const { getToken } = useAuth();
-  const [file, setFile] = useState<File | null>(null);
+  const [file,   setFile]   = useState<File | null>(null);
   const [datasetId, setDatasetId] = useState<string>();
-  const [status, setStatus] = useState<"idle"|"pending"|"processing"|"ready_for_embeddings"|"error">("idle");
+  const [status, setStatus] = useState<DatasetStatus>("idle");
   const [preview, setPreview] = useState<PreviewRow[]>([]);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -20,98 +28,92 @@ export default function UploadDataset() {
 
     setStatus("pending");
 
-    // 1) JWT
+    /* 1️⃣ JWT */
     const token = await getToken({ template: "Tensor" });
 
-    // 2) Solicita presigned URL
+    /* 2️⃣ Presigned URL */
     const res1 = await fetch(
       `${process.env.NEXT_PUBLIC_BACKEND_URL}/datasets/upload-url?filename=${encodeURIComponent(file.name)}`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      }
+      { method: "POST", headers: { Authorization: `Bearer ${token}` } }
     );
-    if (!res1.ok) {
-      const txt = await res1.text();
-      throw new Error(`Failed to get upload URL: ${txt}`);
-    }
+    if (!res1.ok) throw new Error(await res1.text());
     const { upload_url, dataset_id } = await res1.json();
     setDatasetId(dataset_id);
 
-    // 3) Sube el archivo a Supabase
-    const res2 = await fetch(upload_url, {
-      method: "PUT",
-      body: file,
-    });
+    /* 3️⃣ Sube a Storage */
+    const res2 = await fetch(upload_url, { method: "PUT", body: file });
     if (!res2.ok) throw new Error("Upload failed");
-
     setStatus("processing");
 
-    // 4) Polling de status
+    /* 4️⃣ Polling de status */
     const intervalId = window.setInterval(async () => {
-      const res3 = await fetch(
+      const r = await fetch(
         `${process.env.NEXT_PUBLIC_BACKEND_URL}/datasets/${dataset_id}/status`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
+        { headers: { Authorization: `Bearer ${token}` } }
       );
-      if (!res3.ok) return;
-      const { status: dsStatus } = await res3.json();
-      setStatus(dsStatus);
+      if (!r.ok) return;
+      const { status: dsStatus } = await r.json();
+      setStatus(dsStatus as DatasetStatus);
 
-      if (dsStatus === "ready_for_embeddings" || dsStatus === "error") {
-        window.clearInterval(intervalId);
-
-        if (dsStatus === "ready_for_embeddings") {
-          // 5) Cuando esté listo, pide el preview
-          const res4 = await fetch(
-            `${process.env.NEXT_PUBLIC_BACKEND_URL}/datasets/${dataset_id}/preview`,
-            {
-              headers: { Authorization: `Bearer ${token}` },
-            }
-          );
-          if (res4.ok) {
-            const { preview } = await res4.json();
-            setPreview(preview);
-          }
+      /* 5️⃣ Cargar preview una sola vez */
+      if (dsStatus === "ready_for_embeddings" && preview.length === 0) {
+        const rPrev = await fetch(
+          `${process.env.NEXT_PUBLIC_BACKEND_URL}/datasets/${dataset_id}/preview`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (rPrev.ok) {
+          const { preview } = await rPrev.json();
+          setPreview(preview);
         }
       }
-    }, 2000);
+
+      /* 6️⃣ Detener polling cuando llegue al final o error */
+      if (dsStatus === "ready_for_chat" || dsStatus === "error") {
+        window.clearInterval(intervalId);
+      }
+    }, 2500);
   }
 
+  /* ───────── UI ───────── */
   return (
-    <div>
-      <form onSubmit={handleSubmit}>
-        <input 
-          type="file" 
+    <div className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-x-2">
+        <input
+          className="text-black"
+          type="file"
           onChange={e => {
             setFile(e.target.files?.[0] ?? null);
-            setPreview([]);         // limpia preview en cada nuevo upload
+            setPreview([]);
             setStatus("idle");
-          }} 
+            setDatasetId(undefined);
+          }}
         />
-        <button type="submit" disabled={!file || status === "pending" || status === "processing"}>
+        <button
+          className="text-black"
+          type="submit"
+          disabled={!file || status === "pending" || status === "processing"}
+        >
           Upload
         </button>
       </form>
 
-      <div style={{ marginTop: 16 }}>
+      <div className="text-black">
         <strong>Dataset ID:</strong> {datasetId || "-"}
       </div>
-      <div>
+      <div className="text-black">
         <strong>Status:</strong> {status}
       </div>
 
-      {status === "ready_for_embeddings" && preview.length > 0 && (
-        <div style={{ marginTop: 24 }}>
-          <h3>Preview (primeras filas)</h3>
-          <table border={1} cellPadding={4}>
+      {preview.length > 0 && (
+        <div className="text-black mt-6">
+          <h3 className="font-semibold mb-2">
+            Preview (primeras filas)
+          </h3>
+          <table className="border border-gray-400">
             <thead>
               <tr>
                 {Object.keys(preview[0]).map(col => (
-                  <th key={col}>{col}</th>
+                  <th key={col} className="border px-2">{col}</th>
                 ))}
               </tr>
             </thead>
@@ -119,13 +121,19 @@ export default function UploadDataset() {
               {preview.map((row, i) => (
                 <tr key={i}>
                   {Object.values(row).map((val, j) => (
-                    <td key={j}>{String(val)}</td>
+                    <td key={j} className="border px-2">{String(val)}</td>
                   ))}
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+      )}
+
+      {status === "ready_for_chat" && (
+        <p className="text-green-600 font-bold">
+          ✅ ¡Dataset listo para chatear!
+        </p>
       )}
     </div>
   );

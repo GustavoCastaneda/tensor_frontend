@@ -4,7 +4,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { Home, Book } from "lucide-react";
+import { Home, Book, PanelLeftClose } from "lucide-react";
 
 export function Sidebar() {
   const [open, setOpen] = useState(true);
@@ -13,7 +13,7 @@ export function Sidebar() {
     <aside
       className={`${
         open ? "w-40" : "w-16"
-      } flex flex-col bg-neutral-200 text-black transition-all duration-300 h-screen max-h-screen min-h-screen overflow-hidden`}
+      } flex flex-col bg-neutral-200 text-black transition-all duration-300 overflow-hidden`}
     >
       {/* Logo Space */}
       <div className="p-4 border-b border-neutral-300">
@@ -35,19 +35,20 @@ export function Sidebar() {
       <nav className="flex-1 space-y-1 overflow-y-auto">
         <NavItem href="/dashboard" label="Dashboard" icon={<Home size={20} />} open={open} />
         <NavItem href="/knowledge" label="Knowledge" icon={<Book size={20} />} open={open} />
+        
       </nav>
 
-      {/* Toggle Button - Bottom Right
+      {/* Toggle Button - Bottom Right */}
       <div className="p-4">
         <div className="flex justify-end">
           <button
             onClick={() => setOpen(!open)}
             className="p-2 hover:bg-neutral-300 focus:outline-none rounded"
           >
-            ☰
+            <PanelLeftClose />
           </button>
         </div>
-      </div> */}
+      </div>
     </aside>
   );
 }
