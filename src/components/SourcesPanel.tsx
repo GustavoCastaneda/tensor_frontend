@@ -55,16 +55,16 @@ export function SourcesPanel({ wsDocs, wsDocsLoading, wsDocsError, onRefresh }: 
   };
 
   return (
-    <aside className="lg:col-span-1 space-y-2 max-w-xs">
+    <div className="space-y-2 max-w-xs">
       <div className="flex items-center justify-between">
-        <h2 className="text-base font-semibold text-black">Fuentes</h2>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onRefresh}
-          disabled={wsDocsLoading}
-          className="h-7 px-2"
-        >
+        <h2 className="text-base font-montserrat font-medium text-gray-700">Sources</h2>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onRefresh}
+                  disabled={wsDocsLoading}
+                  className="h-7 px-2 text-gray-800 border-0 shadow-none hover:bg-gray-50"
+                >
           <RefreshCw className={cn("h-3 w-3", wsDocsLoading && "animate-spin")} />
         </Button>
       </div>
@@ -72,20 +72,20 @@ export function SourcesPanel({ wsDocs, wsDocsLoading, wsDocsError, onRefresh }: 
       <div className="space-y-2">
         {/* Combobox para seleccionar documento */}
         <Popover open={open} onOpenChange={setOpen}>
-          <PopoverTrigger asChild>
-            <Button
-              variant="outline"
-              role="combobox"
-              aria-expanded={open}
-              className="w-full justify-between h-9"
-            >
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={open}
+                      className="w-full justify-between h-9 border-gray-400"
+                    >
               {selectedDoc ? (
                 <div className="flex items-center gap-2">
                   <FileText className="h-4 w-4" />
                   <span className="truncate">{selectedDoc.filename}</span>
                 </div>
               ) : (
-                <span className="text-muted-foreground">Buscar documento...</span>
+                <span className="text-muted-foreground font-montserrat text-gray-600">Mis documentos...</span>
               )}
               <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
             </Button>
@@ -156,6 +156,6 @@ export function SourcesPanel({ wsDocs, wsDocsLoading, wsDocsError, onRefresh }: 
           </div>
         )}
       </div>
-    </aside>
+    </div>
   );
 }

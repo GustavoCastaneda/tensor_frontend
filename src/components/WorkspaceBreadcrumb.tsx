@@ -27,7 +27,7 @@ export function WorkspaceBreadcrumb({
       <BreadcrumbList>
         <BreadcrumbItem>
           <BreadcrumbLink asChild className="text-gray-400">
-            <Link href="/dashboard">Workspace</Link>
+            <Link href="/dashboard">Dashboard</Link>
           </BreadcrumbLink>
         </BreadcrumbItem>
         <BreadcrumbSeparator>

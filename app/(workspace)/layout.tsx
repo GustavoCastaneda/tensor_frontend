@@ -9,7 +9,7 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
         <Sidebar />
         {/* Columna derecha: contenido */}
         <div className="flex-1 min-w-0 flex flex-col">
-          <main className="flex-1 overflow-auto p-4 bg-white">
+          <main className="flex-1 overflow-hidden bg-white">
             {children}
           </main>
         </div>

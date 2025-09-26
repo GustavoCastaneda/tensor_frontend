@@ -5,7 +5,8 @@
 import { useAuth } from "@clerk/nextjs";
 import { useMemo, useState } from "react";
 import UploadDataset from "@/src/components/UploadDataset";
-import UploadDocument from "@/src/components/UploadDocument"; // ← NUEVO
+import UploadDocument from "@/src/components/UploadDocument";
+import UploadExcel from "@/src/components/UploadExcel";
 
 
 /* ---------------------- Tipos /query/run ---------------------- */
@@ -146,10 +147,10 @@ export default function Knowledge() {
     <div className="container mx-auto p-6 space-y-8">
       <h1 className="text-2xl font-bold text-black">Knowledge Base</h1>
 
-      {/* Subir dataset */}
-      <section className="space-y-3">
-        {/* <h2 className="text-xl font-semibold text-black">Subir dataset</h2> */}
-        {/* <UploadDataset /> */}
+      {/* Subir archivo Excel */}
+      <section className="space-y-4">
+        <h2 className="text-xl font-semibold text-black">Subir archivo Excel</h2>
+        <UploadExcel onDatasetReady={(id) => setDatasetId(id)} />
       </section>
 
       {/* Subir documento (PDF/DOCX) */}
