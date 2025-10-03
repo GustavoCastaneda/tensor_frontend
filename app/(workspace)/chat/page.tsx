@@ -100,6 +100,316 @@ type ChatMessageMetadata = {
 
 type ChatMessage = UIMessage<ChatMessageMetadata>;
 
+// Funciones de detección de intención
+function detectIntent(message: string): 'sql' | 'rag' {
+  return message.trim().toUpperCase().startsWith('EXCL') ? 'sql' : 'rag';
+}
+
+function extractSQLQuery(message: string): string {
+  if (message.trim().toUpperCase().startsWith('EXCL')) {
+    return message.trim().substring(4).trim(); // Remover "EXCL "
+  }
+  return message.trim();
+}
+
+// Función para detectar el tipo de respuesta en los mensajes
+function detectResponseType(message: any): 'sql' | 'rag' {
+  // Si el mensaje tiene metadata con response y es un objeto SQL
+  if (message.metadata?.response && typeof message.metadata.response === 'object') {
+    const response = message.metadata.response;
+    // Detectar si es una respuesta SQL por la estructura
+    if (response.sql_query || response.data || response.chart_config) {
+      return 'sql';
+    }
+  }
+  
+  // Si el mensaje tiene contenido SQL directo
+  if (message.content && typeof message.content === 'object') {
+    if (message.content.sql_query || message.content.data || message.content.chart_config) {
+      return 'sql';
+    }
+  }
+  
+  // Por defecto es RAG
+  return 'rag';
+}
+
+// Componente para renderizar respuestas SQL dentro del flujo de mensajes
+function SQLResponseComponent({ response }: { response: ChatSQLResponse }) {
+  const [copiedQuery, setCopiedQuery] = useState(false);
+
+  const copySQLQuery = async () => {
+    if (!response.sql_query) return;
+    
+    try {
+      await navigator.clipboard.writeText(response.sql_query);
+      setCopiedQuery(true);
+      setTimeout(() => setCopiedQuery(false), 2000);
+    } catch (err) {
+      console.error('Error copying to clipboard:', err);
+    }
+  };
+
+  const formatCellValue = (value: any, column: string) => {
+    if (value === null || value === undefined) return '-';
+    
+    // Formatear fechas
+    if (column.includes('date') && typeof value === 'number') {
+      try {
+        const excelEpoch = new Date(1900, 0, 1);
+        const date = new Date(excelEpoch.getTime() + (value - 2) * 24 * 60 * 60 * 1000);
+        return date.toLocaleDateString('es-ES');
+      } catch {
+        return value.toString();
+      }
+    }
+    
+    // Formatear números con separadores de miles
+    if (typeof value === 'number' && column.includes('amount')) {
+      return new Intl.NumberFormat('es-ES', {
+        style: 'currency',
+        currency: 'USD'
+      }).format(value);
+    }
+    
+    // Formatear números grandes
+    if (typeof value === 'number' && value > 1000) {
+      return new Intl.NumberFormat('es-ES').format(value);
+    }
+    
+    return String(value);
+  };
+
+  const renderChart = (chartConfig: ChartConfig, data: any[]) => {
+    const commonProps = {
+      data: data,
+      margin: { top: 5, right: 30, left: 20, bottom: 5 }
+    };
+
+    switch (chartConfig.type) {
+      case 'bar':
+        return (
+          <BarChart {...commonProps}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey={chartConfig.xKey} />
+            <YAxis />
+            <Tooltip />
+            {chartConfig.legend && <Legend />}
+            {chartConfig.yKeys.map((key, index) => (
+              <Bar 
+                key={key} 
+                dataKey={key} 
+                fill={chartConfig.colors[index % chartConfig.colors.length]} 
+              />
+            ))}
+          </BarChart>
+        );
+
+      case 'line':
+        return (
+          <LineChart {...commonProps}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey={chartConfig.xKey} />
+            <YAxis />
+            <Tooltip />
+            {chartConfig.legend && <Legend />}
+            {chartConfig.yKeys.map((key, index) => (
+              <Line 
+                key={key} 
+                type="monotone" 
+                dataKey={key} 
+                stroke={chartConfig.colors[index % chartConfig.colors.length]} 
+                strokeWidth={2}
+              />
+            ))}
+          </LineChart>
+        );
+
+      case 'pie':
+        return (
+          <PieChart>
+            <Pie
+              data={data}
+              dataKey={chartConfig.yKeys[0]}
+              nameKey={chartConfig.xKey}
+              cx="50%"
+              cy="50%"
+              outerRadius={80}
+              fill="#8884d8"
+            >
+              {data.map((entry, index) => (
+                <Cell 
+                  key={`cell-${index}`} 
+                  fill={chartConfig.colors[index % chartConfig.colors.length]} 
+                />
+              ))}
+            </Pie>
+            <Tooltip />
+            {chartConfig.legend && <Legend />}
+          </PieChart>
+        );
+
+      case 'area':
+        return (
+          <AreaChart {...commonProps}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey={chartConfig.xKey} />
+            <YAxis />
+            <Tooltip />
+            {chartConfig.legend && <Legend />}
+            {chartConfig.yKeys.map((key, index) => (
+              <Area 
+                key={key} 
+                type="monotone" 
+                dataKey={key} 
+                stackId="1" 
+                stroke={chartConfig.colors[index % chartConfig.colors.length]} 
+                fill={chartConfig.colors[index % chartConfig.colors.length]} 
+              />
+            ))}
+          </AreaChart>
+        );
+
+      default:
+        return <div>Tipo de gráfico no soportado: {chartConfig.type}</div>;
+    }
+  };
+
+  if (!response.success) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+        <div className="flex items-center gap-2 text-red-800">
+          <Database className="h-5 w-5" />
+          <span className="font-medium">Error en consulta SQL</span>
+        </div>
+        <p className="text-sm text-red-700 mt-2">{response.error}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Header con mensaje */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <Database className="h-5 w-5 text-blue-600" />
+          <h3 className="text-lg font-semibold text-blue-900">{response.message}</h3>
+        </div>
+        {response.explanation && (
+          <p className="text-sm text-blue-700">{response.explanation}</p>
+        )}
+      </div>
+      
+      {/* Consulta SQL */}
+      {response.sql_query && (
+        <div className="bg-gray-50 border rounded-lg p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="font-medium flex items-center gap-2">
+              <Code className="h-4 w-4" />
+              Consulta SQL Generada
+            </h4>
+            <button
+              onClick={copySQLQuery}
+              className="text-sm text-gray-600 hover:text-gray-800 font-medium"
+            >
+              {copiedQuery ? '✓ Copiado' : '📋 Copiar'}
+            </button>
+          </div>
+          <pre className="bg-gray-900 text-gray-100 p-4 rounded text-sm overflow-x-auto">
+            <code>{response.sql_query}</code>
+          </pre>
+        </div>
+      )}
+
+      {/* Resultados de datos */}
+      {response.data && response.data.rows.length > 0 && (
+        <div className="bg-white border rounded-lg p-4">
+          <h4 className="font-medium mb-3 flex items-center gap-2">
+            <Table className="h-4 w-4" />
+            Resultados ({response.data.row_count} filas)
+          </h4>
+          <div className="overflow-x-auto border rounded-lg">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  {response.data.columns.map(col => (
+                    <th key={col} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      {col.replace(/_/g, ' ')}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {response.data.rows.slice(0, 10).map((row, index) => (
+                  <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                    {response.data!.columns.map(col => (
+                      <td key={col} className="px-4 py-3 text-sm text-gray-900">
+                        {formatCellValue(row[col], col)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {response.data.row_count > 10 && (
+            <p className="mt-3 text-sm text-gray-500 text-center">
+              Mostrando 10 de {response.data.row_count} filas
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Gráfico */}
+      {response.chart_config && response.data && response.data.rows.length > 0 && (
+        <div className="bg-white border rounded-lg p-4">
+          <h4 className="font-medium mb-3 flex items-center gap-2">
+            <BarChart3 className="h-4 w-4" />
+            {response.chart_config.title}
+          </h4>
+          <p className="text-sm text-gray-600 mb-4">{response.chart_config.description}</p>
+          <div className="h-80">
+            <ResponsiveContainer width="100%" height="100%">
+              {renderChart(response.chart_config, response.data.rows)}
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+
+      {/* Insights */}
+      {response.insights && response.insights.length > 0 && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <h4 className="font-medium mb-3 flex items-center gap-2 text-yellow-800">
+            <Lightbulb className="h-4 w-4" />
+            Insights
+          </h4>
+          <ul className="space-y-2">
+            {response.insights.map((insight, index) => (
+              <li key={index} className="flex items-start gap-2">
+                <span className="bg-yellow-200 text-yellow-800 text-xs font-medium px-2 py-1 rounded-full mt-0.5">
+                  {index + 1}
+                </span>
+                <span className="text-sm text-yellow-700">{insight}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Takeaway */}
+      {response.takeaway && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+          <h4 className="font-medium mb-2 flex items-center gap-2 text-green-800">
+            <TrendingUp className="h-4 w-4" />
+            Conclusión Principal
+          </h4>
+          <p className="text-sm text-green-700">{response.takeaway}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ChatPage() {
   const search = useSearchParams();
   const ws = search.get("ws") || "";
@@ -311,19 +621,24 @@ export default function ChatPage() {
     setLocalError(undefined);
     clearError();
 
-    // Si es modo SQL, usar el endpoint SQL
-    if (queryMode === 'sql') {
-      await handleSQLQuery(userMessage);
+    // Detectar intención automáticamente
+    const intent = detectIntent(userMessage);
+    const processedMessage = extractSQLQuery(userMessage);
+
+    // Si es SQL, usar el endpoint SQL
+    if (intent === 'sql') {
+      await handleSQLQuery(processedMessage);
       return;
     }
 
+    // Si es RAG, usar el endpoint normal
     try {
       const token = await getToken({ template: "Tensor" });
       if (!token) throw new Error("No hay token de sesión.");
 
       // Send message using AI SDK
       await sendMessage(
-        { text: userMessage },
+        { text: processedMessage },
         { 
           body: { 
             data: { workspace_id: ws } 
@@ -510,8 +825,8 @@ export default function ChatPage() {
         {/* Main chat area */}
         <div className="flex-1 min-h-0 flex flex-col">
 
-          {/* Mostrar resultados SQL si estamos en modo SQL */}
-          {queryMode === 'sql' && sqlData && (
+          {/* Mostrar resultados SQL si hay datos SQL */}
+          {sqlData && (
             <div className="mb-4 space-y-4">
               {/* Header con mensaje */}
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -642,7 +957,7 @@ export default function ChatPage() {
           )}
 
           {/* Mostrar loading para SQL */}
-          {queryMode === 'sql' && sqlLoading && (
+          {sqlLoading && (
             <div className="mb-4 p-4 bg-white border rounded-lg">
               <div className="flex items-center justify-center py-4">
                 <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mr-3"></div>
@@ -652,7 +967,7 @@ export default function ChatPage() {
           )}
 
           {/* Estado vacío para SQL */}
-          {queryMode === 'sql' && !sqlData && !sqlLoading && (
+          {!sqlData && !sqlLoading && (
             <div className="mb-4 p-8 bg-white border rounded-lg text-center">
               <Database className="h-12 w-12 text-gray-400 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">
@@ -780,6 +1095,9 @@ export default function ChatPage() {
               message.role === 'assistant' && message.id === lastMessageId && isStreaming;
               const isAssistantComplete = message.role === 'assistant' && !isAssistantStreaming;
 
+              // Detectar tipo de respuesta
+              const responseType = detectResponseType(message);
+
               // Filtrar partes de razonamiento
               const reasoningParts = message.parts.filter((part) => part.type === 'reasoning');
               const reasoningStreamingText = reasoningParts
@@ -803,6 +1121,7 @@ export default function ChatPage() {
               console.log('Message object:', message);
               console.log('Message parts:', message.parts);
               console.log('Display parts:', displayParts);
+              console.log('Response type:', responseType);
 
             return (
                   <Message key={message.id} from={message.role}>
@@ -825,26 +1144,32 @@ export default function ChatPage() {
                         <div className="mb-2 text-sm text-gray-500">Escribiendo...</div>
                       )}
 
-                      {/* Mostrar la respuesta DESPUÉS del razonamiento */}
-                  <div className="whitespace-pre-wrap space-y-2">
-                        {displayParts.length > 0 ? (
-                          displayParts.map((part, i: number) => {
-                      switch (part.type) {
-                        case 'text':
-                          return (
-                                  <Response key={`${message.id}-${part.type}-${i}`}>
-                              {part.text}
-                                  </Response>
-                          );
-                        default:
-                          return null;
-                      }
-                          })
-                        ) : (
-                          // Fallback: mostrar mensaje si no hay partes de texto
-                          <Response>No hay contenido disponible</Response>
-                        )}
-                      </div>
+                      {/* Renderizar respuesta según el tipo detectado */}
+                      {message.role === 'assistant' && responseType === 'sql' ? (
+                        // Renderizar respuesta SQL
+                        <SQLResponseComponent response={responseData as unknown as ChatSQLResponse} />
+                      ) : (
+                        // Renderizar respuesta RAG (texto + citas)
+                        <div className="whitespace-pre-wrap space-y-2">
+                          {displayParts.length > 0 ? (
+                            displayParts.map((part, i: number) => {
+                        switch (part.type) {
+                          case 'text':
+                            return (
+                                    <Response key={`${message.id}-${part.type}-${i}`}>
+                                {part.text}
+                                    </Response>
+                            );
+                          default:
+                            return null;
+                        }
+                            })
+                          ) : (
+                            // Fallback: mostrar mensaje si no hay partes de texto
+                            <Response>No hay contenido disponible</Response>
+                          )}
+                        </div>
+                      )}
 
                     {isAssistantComplete && responseData?.debug?.thinking_summary && (
                     <div className="mt-3 text-xs text-gray-500">
